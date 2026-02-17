@@ -3,33 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DragHTML with Resize & Rotation</title>
+<title>DragHTML Box Model + Editable Links</title>
 <style>
-  body { margin:0; font-family:sans-serif; display:flex; height:100vh; }
-  /* Sidebar */
-  #sidebar { width:150px; background:#2c3e50; color:white; display:flex; flex-direction:column; padding:10px; }
-  #sidebar button { margin:5px 0; padding:10px; cursor:pointer; }
-  /* Main area */
-  #main { flex:1; display:flex; flex-direction:column; }
-  /* Tabs */
-  #tabs { display:flex; background:#34495e; }
-  #tabs button { flex:1; padding:10px; cursor:pointer; color:white; background:none; border:none; }
-  #tabs button.active { background:#1abc9c; }
-  /* Editor container */
-  #editorContainer { flex:1; display:flex; flex-direction:column; }
-  #workspace, #codeEditor, #preview { flex:1; position:relative; overflow:auto; background:#ecf0f1; }
-  #workspace {
-    background-image: linear-gradient(to right, #ddd 1px, transparent 1px),
-                      linear-gradient(to bottom, #ddd 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
-  .draggable { position:absolute; border:1px dashed #333; padding:10px; cursor:grab; background:white; transform-origin:center; }
-  .draggable.selected { outline:2px solid #1abc9c; }
-  .resizer { width:10px; height:10px; background:#1abc9c; position:absolute; right:0; bottom:0; cursor:se-resize; }
-  #codeEditor textarea { width:100%; height:100%; border:none; padding:10px; font-family:monospace; font-size:14px; }
-  #propertiesBar { display:none; padding:5px; background:#fff; border-top:1px solid #ccc; gap:5px; flex-shrink:0; display:flex; flex-wrap:wrap; }
-  #propertiesBar label { display:flex; flex-direction:column; font-size:12px; margin-right:10px; }
-  #propertiesBar input { padding:3px; }
+body { margin:0; font-family:sans-serif; display:flex; height:100vh; }
+#sidebar { width:150px; background:#2c3e50; color:white; display:flex; flex-direction:column; padding:10px; }
+#sidebar button { margin:5px 0; padding:10px; cursor:pointer; }
+#main { flex:1; display:flex; flex-direction:column; }
+#tabs { display:flex; background:#34495e; }
+#tabs button { flex:1; padding:10px; cursor:pointer; color:white; background:none; border:none; }
+#tabs button.active { background:#1abc9c; }
+#editorContainer { flex:1; display:flex; flex-direction:column; }
+#workspace, #codeEditor, #preview { flex:1; position:relative; overflow:auto; background:#ecf0f1; }
+#workspace {
+  background-image: linear-gradient(to right, #ddd 1px, transparent 1px),
+                    linear-gradient(to bottom, #ddd 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.draggable { position:absolute; cursor:grab; transform-origin:center; display:flex; align-items:center; justify-content:center; }
+.draggable.selected { outline:2px solid #1abc9c; }
+.resizer { width:10px; height:10px; background:#1abc9c; position:absolute; right:0; bottom:0; cursor:se-resize; }
+#codeEditor textarea { width:100%; height:100%; border:none; padding:10px; font-family:monospace; font-size:14px; }
+#propertiesBar { display:none; padding:5px; background:#fff; border-top:1px solid #ccc; gap:5px; flex-shrink:0; display:flex; flex-wrap:wrap; max-height:200px; overflow:auto; }
+#propertiesBar label { display:flex; flex-direction:column; font-size:12px; margin-right:10px; }
+#propertiesBar input { padding:3px; }
+img { display:block; max-width:100%; max-height:100%; }
 </style>
 </head>
 <body>
@@ -38,6 +35,8 @@
   <button onclick="addElement('div')">Div</button>
   <button onclick="addElement('p')">Paragraph</button>
   <button onclick="addElement('button')">Button</button>
+  <button onclick="addElement('a')">Link</button>
+  <button onclick="addElement('img')">Image</button>
   <button onclick="exportHTML()">Export HTML</button>
   <button onclick="importHTML()">Import HTML</button>
   <input type="file" id="importFile" style="display:none" />
@@ -55,10 +54,16 @@
     <div id="codeEditor" style="display:none;"><textarea id="codeArea"></textarea></div>
     <div id="preview" style="display:none;"></div>
     <div id="propertiesBar">
-      <label>Text: <input id="propText" /></label>
+      <label>Text/Alt: <input id="propText" /></label>
+      <label>Link URL: <input id="propHref" /></label>
+      <label>Text Color: <input id="propTextColor" type="color" /></label>
+      <label>Background: <input id="propBGColor" type="color" /></label>
+      <label>Border Color: <input id="propBorderColor" type="color" /></label>
+      <label>Border Thickness: <input id="propBorderThickness" type="number" min="0" /></label>
+      <label>Padding: <input id="propPadding" type="number" min="0" /></label>
+      <label>Margin: <input id="propMargin" type="number" min="0" /></label>
       <label>Width: <input id="propWidth" type="number" /></label>
       <label>Height: <input id="propHeight" type="number" /></label>
-      <label>Color: <input id="propColor" type="color" /></label>
       <label>Rotation: <input id="propRotate" type="number" min="0" max="360" step="15" /></label>
     </div>
   </div>
@@ -66,27 +71,45 @@
 
 <script>
 const gridSize = 20;
-let currentId = 0, selectedEl = null;
+let currentId=0, selectedEl=null;
 
 // Utils
 function rgbToHex(rgb){
   if(!rgb) return '#ffffff';
-  const m = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(rgb);
+  const m=/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(rgb);
   return m? "#" + ((1<<24)+(parseInt(m[1])<<16)+(parseInt(m[2])<<8)+parseInt(m[3])).toString(16).slice(1) : rgb;
 }
 
 // Add element
 function addElement(tag){
-  const el=document.createElement(tag);
+  const el=document.createElement('div');
   el.className='draggable';
   el.id='el'+currentId++;
-  el.textContent=tag.toUpperCase();
-  Object.assign(el.style,{top:'50px', left:'50px', width:'100px', height:'50px', background:'#fff', transform:'rotate(0deg)'});
+  el.style.width='120px'; el.style.height='80px';
+  el.style.transform='rotate(0deg)';
+  el.style.margin='0px';
   
+  const content=document.createElement(tag);
+  content.style.boxSizing='border-box';
+  content.style.width='100%';
+  content.style.height='100%';
+  content.style.background='#fff';
+  content.style.border='2px solid #333';
+  content.style.padding='10px';
+  content.style.color='#000';
+  content.style.display='flex';
+  content.style.alignItems='center';
+  content.style.justifyContent='center';
+
+  if(tag==='img'){ content.src='https://via.placeholder.com/100x50'; content.alt='Image'; content.style.objectFit='contain'; }
+  if(tag==='a'){ content.href='#'; content.textContent='Link'; }
+
+  el.appendChild(content);
+
   const resizer=document.createElement('div');
   resizer.className='resizer';
   el.appendChild(resizer);
-  
+
   makeDraggable(el);
   makeResizable(el,resizer);
   el.addEventListener('click', e=>{ e.stopPropagation(); selectElement(el); });
@@ -102,32 +125,48 @@ function selectElement(el){
   updatePropertiesInputs();
 }
 
-// Update property inputs
+// Update inputs
 function updatePropertiesInputs(){
   if(!selectedEl) return;
-  document.getElementById('propText').value = selectedEl.textContent.replace(/[\u200B]/g,'');
-  document.getElementById('propWidth').value = parseInt(selectedEl.style.width);
-  document.getElementById('propHeight').value = parseInt(selectedEl.style.height);
-  document.getElementById('propColor').value = rgbToHex(selectedEl.style.background);
-  const rotate = selectedEl.style.transform.match(/rotate\(([-\d]+)deg\)/);
-  document.getElementById('propRotate').value = rotate ? parseInt(rotate[1]) : 0;
+  const content=selectedEl.children[0];
+  document.getElementById('propText').value=content.tagName==='IMG'? content.alt : content.textContent;
+  document.getElementById('propHref').value=content.tagName==='A'? content.href : '';
+  document.getElementById('propTextColor').value=rgbToHex(content.style.color||'#000');
+  document.getElementById('propBGColor').value=rgbToHex(content.style.background||'#fff');
+  document.getElementById('propBorderColor').value=content.style.borderColor||'#000';
+  document.getElementById('propBorderThickness').value=parseInt(content.style.borderWidth)||2;
+  document.getElementById('propPadding').value=parseInt(content.style.padding)||0;
+  document.getElementById('propMargin').value=parseInt(selectedEl.style.margin)||0;
+  document.getElementById('propWidth').value=parseInt(selectedEl.style.width);
+  document.getElementById('propHeight').value=parseInt(selectedEl.style.height);
+  const r = selectedEl.style.transform.match(/rotate\(([-\d]+)deg\)/);
+  document.getElementById('propRotate').value=r? parseInt(r[1]):0;
 }
 
-// Live property edits
-['propText','propWidth','propHeight','propColor','propRotate'].forEach(id=>{
+// Live edits
+['propText','propHref','propTextColor','propBGColor','propBorderColor','propBorderThickness','propPadding','propMargin','propWidth','propHeight','propRotate'].forEach(id=>{
   const input=document.getElementById(id);
   input.addEventListener('input', e=>{
     if(!selectedEl) return;
-    if(id==='propText') selectedEl.firstChild.nodeValue=e.target.value;
-    if(id==='propWidth') selectedEl.style.width=e.target.value+'px';
-    if(id==='propHeight') selectedEl.style.height=e.target.value+'px';
-    if(id==='propColor') selectedEl.style.background=e.target.value;
-    if(id==='propRotate') selectedEl.style.transform='rotate('+parseInt(e.target.value)+'deg)';
+    const content=selectedEl.children[0];
+    switch(id){
+      case 'propText': if(content.tagName==='IMG') content.alt=e.target.value; else content.textContent=e.target.value; break;
+      case 'propHref': if(content.tagName==='A') content.href=e.target.value; break;
+      case 'propTextColor': content.style.color=e.target.value; break;
+      case 'propBGColor': content.style.background=e.target.value; break;
+      case 'propBorderColor': content.style.borderColor=e.target.value; break;
+      case 'propBorderThickness': content.style.border=`${e.target.value}px solid ${content.style.borderColor||'#000'}`; break;
+      case 'propPadding': content.style.padding=e.target.value+'px'; break;
+      case 'propMargin': selectedEl.style.margin=e.target.value+'px'; break;
+      case 'propWidth': selectedEl.style.width=e.target.value+'px'; break;
+      case 'propHeight': selectedEl.style.height=e.target.value+'px'; break;
+      case 'propRotate': selectedEl.style.transform='rotate('+parseInt(e.target.value)+'deg)'; break;
+    }
   });
   input.addEventListener('mousedown', e=>e.stopPropagation());
 });
 
-// Click outside deselects
+// Click outside deselect
 document.getElementById('workspace').addEventListener('click', ()=>{
   if(selectedEl) selectedEl.classList.remove('selected');
   selectedEl=null;
@@ -139,8 +178,71 @@ function showTab(tab){
   ['workspace','codeEditor','preview'].forEach(id=>document.getElementById(id).style.display='none');
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('active'));
   if(tab==='workspace'){ document.getElementById('workspace').style.display='block'; document.querySelector('#tabs button:nth-child(1)').classList.add('active'); }
-  if(tab==='codeEditor'){ document.getElementById('codeEditor').style.display='block'; document.querySelector('#tabs button:nth-child(2)').classList.add('active'); document.getElementById('codeArea').value=document.getElementById('workspace').innerHTML; }
-  if(tab==='preview'){ document.getElementById('preview').style.display='block'; document.querySelector('#tabs button:nth-child(3)').classList.add('active'); document.getElementById('preview').innerHTML=document.getElementById('workspace').innerHTML; }
+  if(tab==='codeEditor'){ 
+    document.getElementById('codeEditor').style.display='block'; 
+    document.querySelector('#tabs button:nth-child(2)').classList.add('active'); 
+    document.getElementById('codeArea').value=document.getElementById('workspace').innerHTML; 
+  }
+  if(tab==='preview'){ 
+    document.getElementById('preview').style.display='block'; 
+    document.querySelector('#tabs button:nth-child(3)').classList.add('active'); 
+    const clone=document.getElementById('workspace').cloneNode(true);
+    clone.querySelectorAll('.resizer').forEach(r=>r.remove());
+    clone.querySelectorAll('.draggable').forEach(d=>d.classList.remove('selected'));
+    document.getElementById('preview').innerHTML='';
+    document.getElementById('preview').appendChild(clone);
+  }
+}
+
+// Draggable + snap
+function makeDraggable(el){
+  let offsetX, offsetY, dragging=false;
+  el.addEventListener('mousedown', e=>{
+    if(e.target.closest('#propertiesBar') || e.target.classList.contains('resizer')) return;
+    dragging=true;
+    offsetX=e.clientX-el.offsetLeft;
+    offsetY=e.clientY-el.offsetTop;
+    el.style.cursor='grabbing';
+  });
+  document.addEventListener('mousemove', e=>{
+    if(dragging){
+      let x=e.clientX-offsetX, y=e.clientY-offsetY;
+      const snap=10;
+      const gx=Math.round(x/gridSize)*gridSize;
+      const gy=Math.round(y/gridSize)*gridSize;
+      if(Math.abs(x-gx)<snap) x=gx;
+      if(Math.abs(y-gy)<snap) y=gy;
+      el.style.left=x+'px';
+      el.style.top=y+'px';
+      updatePropertiesInputs();
+    }
+  });
+  document.addEventListener('mouseup', ()=>{ if(dragging){ dragging=false; el.style.cursor='grab'; } });
+}
+
+// Resizable + snap
+function makeResizable(el,resizer){
+  let startX,startY,startW,startH,resizing=false;
+  resizer.addEventListener('mousedown', e=>{
+    e.stopPropagation();
+    resizing=true;
+    startX=e.clientX; startY=e.clientY;
+    startW=parseInt(el.style.width); startH=parseInt(el.style.height);
+  });
+  document.addEventListener('mousemove', e=>{
+    if(resizing){
+      let w=startW+(e.clientX-startX);
+      let h=startH+(e.clientY-startY);
+      const snap=10;
+      const gw=Math.round(w/gridSize)*gridSize;
+      const gh=Math.round(h/gridSize)*gridSize;
+      if(Math.abs(w-gw)<snap) w=gw;
+      if(Math.abs(h-gh)<snap) h=gh;
+      el.style.width=w+'px'; el.style.height=h+'px';
+      updatePropertiesInputs();
+    }
+  });
+  document.addEventListener('mouseup', ()=>{ if(resizing) resizing=false; });
 }
 
 // Export / Import
@@ -164,66 +266,6 @@ function importHTML(){
     };
     reader.readAsText(e.target.files[0]);
   };
-}
-
-// Draggable with snapping
-function makeDraggable(el){
-  let offsetX, offsetY, dragging=false;
-  el.addEventListener('mousedown', e=>{
-    if(e.target.tagName==='INPUT' || e.target.closest('#propertiesBar') || e.target.classList.contains('resizer')) return;
-    dragging=true;
-    offsetX=e.clientX-el.offsetLeft;
-    offsetY=e.clientY-el.offsetTop;
-    el.style.cursor='grabbing';
-  });
-  document.addEventListener('mousemove', e=>{
-    if(dragging){
-      let x=e.clientX-offsetX, y=e.clientY-offsetY;
-      const snap=10;
-      const gx=Math.round(x/gridSize)*gridSize;
-      const gy=Math.round(y/gridSize)*gridSize;
-      if(Math.abs(x-gx)<snap) x=gx;
-      if(Math.abs(y-gy)<snap) y=gy;
-
-      document.querySelectorAll('.draggable').forEach(o=>{
-        if(o===el) return;
-        const ox=o.offsetLeft, oy=o.offsetTop, ow=o.offsetWidth, oh=o.offsetHeight;
-        if(Math.abs(x-ox)<snap) x=ox;
-        if(Math.abs(x+el.offsetWidth-(ox+ow))<snap) x=ox+ow-el.offsetWidth;
-        if(Math.abs(y-oy)<snap) y=oy;
-        if(Math.abs(y+el.offsetHeight-(oy+oh))<snap) y=oy+oh-el.offsetHeight;
-      });
-      el.style.left=x+'px';
-      el.style.top=y+'px';
-      updatePropertiesInputs();
-    }
-  });
-  document.addEventListener('mouseup', ()=>{ if(dragging){ dragging=false; el.style.cursor='grab'; } });
-}
-
-// Resizable with snapping
-function makeResizable(el,resizer){
-  let startX,startY,startW,startH,resizing=false;
-  resizer.addEventListener('mousedown', e=>{
-    e.stopPropagation();
-    resizing=true;
-    startX=e.clientX; startY=e.clientY;
-    startW=parseInt(el.style.width); startH=parseInt(el.style.height);
-  });
-  document.addEventListener('mousemove', e=>{
-    if(resizing){
-      let w=startW+(e.clientX-startX);
-      let h=startH+(e.clientY-startY);
-      const snap=10;
-      const gw=Math.round(w/gridSize)*gridSize;
-      const gh=Math.round(h/gridSize)*gridSize;
-      if(Math.abs(w-gw)<snap) w=gw;
-      if(Math.abs(h-gh)<snap) h=gh;
-      el.style.width=w+'px'; el.style.height=h+'px';
-      updatePropertiesInputs();
-    }
-  });
-  document.addEventListener('mouseup', ()=>{ if(resizing) resizing=false; });
 }
 </script>
 
