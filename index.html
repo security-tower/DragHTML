@@ -55,7 +55,7 @@ img { display:block; max-width:100%; max-height:100%; }
     <div id="preview" style="display:none;"></div>
     <div id="propertiesBar">
       <label>Text/Alt: <input id="propText" /></label>
-      <label>Link URL: <input id="propHref" /></label>
+      <label id="propHrefLabel" style="display:none">Link URL: <input id="propHref" /></label>
       <label>Text Color: <input id="propTextColor" type="color" /></label>
       <label>Background: <input id="propBGColor" type="color" /></label>
       <label>Border Color: <input id="propBorderColor" type="color" /></label>
@@ -122,6 +122,11 @@ function selectElement(el){
   selectedEl=el;
   el.classList.add('selected');
   document.getElementById('propertiesBar').style.display='flex';
+  
+  const content=el.children[0];
+  // Show or hide Link URL input
+  document.getElementById('propHrefLabel').style.display=content.tagName==='A'? 'flex':'none';
+
   updatePropertiesInputs();
 }
 
